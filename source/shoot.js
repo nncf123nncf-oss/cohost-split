@@ -1,8 +1,8 @@
 // 投稿カード用の素材を撮る（Chrome headless / CDP・DPR2）。実行: node source/shoot.js <出力フォルダ> [--probe]
-// 01-x-primary: 見る画面（相手に送ったリンクを開いたところ）。Card1の値（さくら60%・みどり40%）で、説明バナー〜1人ずつのカードまで
+// 01-x-primary: 見る画面（相手に送ったリンクを開いたところ）。Card1の値（さくら60%・みどり40%）で、精算の枠〜1人ずつのカードまで（説明バナー・タイトル・開催日は画面の上にあり、範囲に入れていない）
 // 02-make-1000: 作る画面 1000px・2列。Card2の値（3人・均等・端数1円）で、左にメンバーと売上・経費、右に精算の2行と1人ずつのカード
 //   （リンクは作らない。共有用URLの欄に撮影用サーバーのアドレスが出るため、写さない）
-// 03-message-480: 見る画面の下部（受け取った売上・立て替えた経費の一覧と明細の文）（予備）
+// 03-message-600: 見る画面の下部（受け取った売上・立て替えた経費の一覧と明細の文）（予備）
 // 見本はすべて架空。値は画面の「サンプルを入れる」と仕様カード第6節のCard2のとおり
 const fs = require('fs'), path = require('path'), http = require('http');
 const { launch } = require('./cdp');
@@ -26,11 +26,11 @@ const CARD2 = { event: '', date: '', mode: 0, members: [{ name: 'あおい', pct
   await b.send('Network.enable');
   await b.send('Network.setBlockedURLs', { urls: ['*cloudflareinsights.com*'] });
 
-  // 01: 見る画面。幅480px（375pxだと縦に長くなり、1:1のカードで余白が大きく出るため）
-  await b.open(ORIGIN, 480, 1600, 2, true, 'light');
+  // 01: 見る画面。幅600px（本文は最大560px）。375px・480pxだと縦に長くなり、1:1のカードでスクショの占有率が60%に届かないため
+  await b.open(ORIGIN, 600, 1600, 2, true, 'light');
   const url = await b.ev(`CS.makeUrl(${JSON.stringify(ORIGIN)}, CS.toConfig(CS.sampleDraft()).cfg)`);
-  await b.open(url, 480, 1600, 2, true, 'light');
-  const top = await b.ev(rectEv(`document.querySelector('.notice')`));
+  await b.open(url, 600, 1600, 2, true, 'light');
+  const top = await b.ev(rectEv(`document.querySelector('.settle')`));
   const people = await b.ev(rectEv(`document.querySelector('.people')`));
   const c1 = pad(union(top, people), 12);
   report('01-x-primary', c1);
@@ -40,8 +40,8 @@ const CARD2 = { event: '', date: '', mode: 0, members: [{ name: 'あおい', pct
   const lists = await b.ev(rectEv(`document.querySelectorAll('h3')[document.querySelectorAll('h3').length-3]`));
   const msg = await b.ev(rectEv(`document.querySelector('.msgbox').closest('.panel')`));
   const c3 = pad(union(lists, msg), 12);
-  report('03-message-480', c3);
-  if (!PROBE) await b.shot(path.join(OUT, '03-message-480.png'), c3);
+  report('03-message-600', c3);
+  if (!PROBE) await b.shot(path.join(OUT, '03-message-600.png'), c3);
 
   // 02: 作る画面 1000px（右の列が途中で切れないよう、高さを大きくする）
   await b.open(ORIGIN, 1000, 2400, 2, false, 'light');
