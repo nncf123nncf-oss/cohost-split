@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>共催イベントの売上分け</title>
+<meta name="description" content="2〜4人で開いたイベントの売上（誰が受け取ったか）と経費（誰が立て替えたか）を入れると、残りを均等か割合で分けて、誰が誰にいくら渡すかを出します。明細はリンクにして相手に送れます。入力した内容はこの端末のブラウザで計算します。">
+<style>
+  :root {
+    --bg: #f4f8f1; --surface: #ffffff; --ink: #14210f; --ink2: #34432d; --ink3: #4d5c45;
+    --line: #d5e0cd; --line-strong: #667a5b; --accent: #2c6a3a; --accent-ink: #ffffff; --accent-soft: #e3f1e0;
+    --danger: #a8231b; --danger-soft: #fbe9e7; --notice: #eaf1e4;
+    --font: "Hiragino Sans","Yu Gothic","BIZ UDPGothic","Noto Sans JP",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f150d; --surface: #182016; --ink: #eaf3e4; --ink2: #cfdcc6; --ink3: #adbca3;
+      --line: #2f3c2a; --line-strong: #8a9e7e; --accent: #8fd19e; --accent-ink: #0b2212; --accent-soft: #1f3322;
+      --danger: #ff9a92; --danger-soft: #3a1f1c; --notice: #1c2619;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.6; }
+  main { max-width: 1080px; margin: 0 auto; padding: 16px 16px 32px; }
+  h1 { font-size: 22px; line-height: 1.3; margin: 8px 0 8px; }
+  h2 { font-size: 18px; line-height: 1.4; margin: 0 0 10px; overflow-wrap: anywhere; }
+  h3 { font-size: 16px; line-height: 1.4; margin: 0 0 8px; overflow-wrap: anywhere; }
+  p { margin: 0 0 10px; }
+  .lead { color: var(--ink2); }
+  .notes { margin: 0 0 14px; padding-left: 1.2em; color: var(--ink2); font-size: 15px; }
+  .notes li { margin-bottom: 2px; }
+  .small { font-size: 14px; color: var(--ink3); }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 14px; min-width: 0; }
+  label.f { display: block; font-weight: 600; margin: 0 0 4px; }
+  .hint { font-weight: 400; color: var(--ink3); font-size: 14px; }
+  input[type=text], input[type=date], select, textarea {
+    display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 44px; font: inherit; font-size: 16px; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line-strong); border-radius: 6px; padding: 8px 10px; margin: 0 0 10px; -webkit-appearance: none; appearance: none; }
+  select { -webkit-appearance: menulist; appearance: auto; }
+  textarea { resize: vertical; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible, .seg input:focus-visible + span {
+    outline: 3px solid var(--accent); outline-offset: 2px; }
+  button { font: inherit; font-size: 16px; min-height: 44px; min-width: 44px; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line-strong);
+    background: var(--surface); color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; text-align: center; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+  .stack { display: grid; gap: 10px; margin: 0 0 8px; }
+  .stack button { width: 100%; min-height: 52px; font-size: 17px; }
+  .errors { border: 2px solid var(--danger); background: var(--danger-soft); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; color: var(--ink); }
+  .errors ul { margin: 4px 0 0; padding-left: 1.2em; }
+  .okmsg { color: var(--ink2); font-weight: 600; }
+  .urlbox { font-size: 14px; word-break: break-all; overflow-wrap: anywhere; }
+  .len { font-weight: 700; }
+  .num-in { text-align: right; }
+  /* 作る画面 */
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 10px; border: 0; padding: 0; }
+  .seg legend { font-weight: 600; margin: 0 0 4px; padding: 0; }
+  .seg label { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 6px; cursor: pointer; }
+  .seg input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--accent); }
+  .seg label:has(input:checked) { border: 2px solid var(--accent); background: var(--accent-soft); font-weight: 700; }
+  .mem { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 0 0 8px; }
+  .mem input { margin: 0; }
+  .mem .no { font-weight: 700; color: var(--ink3); text-align: center; white-space: nowrap; font-size: 15px; }
+  .mem .pct { display: flex; align-items: center; gap: 4px; }
+  .mem .pct input { width: 4.6em; }
+  .sum { font-weight: 700; margin: 0 0 10px; }
+  .row { border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px; margin: 0 0 10px; background: var(--surface); }
+  .row-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 8px; }
+  .row-grid .wide { grid-column: 1 / -1; }
+  .row-grid input, .row-grid select { margin-bottom: 8px; }
+  .row-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .row-foot .rno { font-weight: 700; color: var(--ink3); font-size: 14px; }
+  .row-foot button { padding: 6px 12px; font-size: 15px; }
+  @media (min-width: 560px) { .row-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr); } .row-grid .wide { grid-column: auto; } }
+  .sec-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 16px 0 8px; }
+  .sec-h h2 { margin: 0; }
+  /* 結果 */
+  .notice { background: var(--notice); border: 1px solid var(--line-strong); border-left: 6px solid var(--accent); border-radius: 6px; padding: 10px 12px; margin: 0 0 14px; font-size: 14px; color: var(--ink2); }
+  .v-event { font-size: 21px; line-height: 1.35; margin: 0 0 2px; overflow-wrap: anywhere; }
+  .v-date { color: var(--ink3); font-size: 15px; margin: 0 0 12px; }
+  .settle { border: 3px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 12px 14px; margin: 0 0 12px; }
+  .settle h3 { font-size: 15px; color: var(--ink3); margin: 0 0 4px; }
+  .settle .tr { font-size: 22px; font-weight: 800; line-height: 1.4; margin: 2px 0; overflow-wrap: anywhere; }
+  .settle .tr .amt { white-space: nowrap; }
+  .settle .none { font-size: 19px; font-weight: 800; margin: 2px 0; }
+  .totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; }
+  .totals div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+  .totals .k { display: block; font-size: 13px; color: var(--ink3); }
+  .totals .v { display: block; font-weight: 800; font-size: 16px; overflow-wrap: anywhere; }
+  .deficit { border: 2px solid var(--danger); background: var(--danger-soft); border-radius: 8px; padding: 8px 12px; margin: 0 0 12px; font-weight: 700; }
+  .basis { color: var(--ink2); margin: 0 0 10px; overflow-wrap: anywhere; }
+  .people { display: grid; gap: 8px; margin: 0 0 12px; }
+  .person { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  .person .ph { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 0 0 4px; }
+  .person .pn { font-weight: 800; font-size: 17px; overflow-wrap: anywhere; }
+  .person .pd { font-weight: 800; }
+  .person dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 12px; margin: 0; font-size: 15px; }
+  .person dt { color: var(--ink3); }
+  .person dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+  .list { margin: 0 0 12px; padding: 0; list-style: none; font-size: 15px; }
+  .list li { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 4px 0; }
+  .list li span:first-child { overflow-wrap: anywhere; min-width: 0; }
+  .list li span:last-child { white-space: nowrap; }
+  .tax { border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px 12px; margin: 0 0 14px; background: var(--surface); font-size: 14px; color: var(--ink2); }
+  .msgbox { font-size: 15px; white-space: pre-wrap; }
+  .linklike { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 8px 0; min-height: 44px; }
+  .mw-footer { box-sizing: border-box; width: 100%; max-width: 100%; margin: 24px 0 0; padding: 16px; background: #F7F7F8;
+    border: 1px solid #D8D8DC; border-radius: 6px; color: #3A3A3E; font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.7; }
+  .mw-footer p { margin: 0 0 6px; } .mw-footer p:last-child { margin-bottom: 0; } .mw-footer a { color: #0B5AA6; display: inline-block; padding: 13px 0; }
+  @media (min-width: 880px) {
+    .layout { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 20px; align-items: start; }
+    .sticky { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+    .viewpage { max-width: 560px; margin: 0 auto; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div id="app"></div>
+  <footer class="mw-footer">
+    <p>みちAIワークス（MICHI AI WORKS）／代表 田中　泉</p>
+    <p>運営: <a href="https://michi-portfolio.vercel.app/" rel="noopener">みちAIワークス 公式サイト</a>（https://michi-portfolio.vercel.app/ ）／ お問い合わせ: <a href="mailto:nncf123nncf@gmail.com">nncf123nncf@gmail.com</a></p>
+    <p>入力した内容は、お使いの端末のブラウザで計算します。このページはお金を動かしません。振込先や口座は扱いません。リンクの画面は、リンクを作った方が入力した内容を表示するだけで、当サイトは内容の確認や保証をしていません。アクセス解析（Cloudflare Web Analytics）で、ページの閲覧状況（閲覧数・参照元・ブラウザの種類など）を計測しています。</p>
+    <p>ログイン・会員登録・パスワードの入力を求めることはありません。</p>
+  </footer>
+</main>
+
+<script id="core">
+var CS = (function () {
+  var KEY = 'cohost-split-v1';
+  var LIM = { event: 30, name: 10, item: 20, membersMin: 2, membersMax: 4, sales: 8, exp: 10, amount: 9999999 };
+  var HASH_MAX = 4000, URL_MAX = 2000;
+  var WD = ['日', '月', '火', '水', '木', '金', '土'];
+
+  function clean(s) { return String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function cpLen(s) { return Array.from(s).length; }
+  function norm(s) {
+    return String(s).normalize('NFKC').toLowerCase()
+      .replace(/[\u00ad\u200b-\u200f\u2060-\u2064\ufeff]/g, '')
+      .replace(/[‐-―−ーｰ]/g, '-').replace(/[。｡]/g, '.');
+  }
+  // 言葉の照合用: カタカナをひらがなにそろえ、文字と数字以外（区切り・記号・見えない文字・長音）を落とす
+  // （表示や保存する文字はそのまま。照合のときだけこの形にする）
+  var RE_FILLER = new RegExp('[' + String.fromCharCode(0x3164, 0x115f, 0x1160, 0xffa0) + ']', 'g');
+  function wordKey(s) {
+    return norm(s).replace(/[ァ-ヶ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0x60); })
+      .replace(/[^\p{L}\p{N}]/gu, '').replace(RE_FILLER, '');
+  }
+  function hasWord(key, words) { for (var i = 0; i < words.length; i++) if (key.indexOf(words[i]) >= 0) return true; return false; }
+  // リンク・メールアドレス・電話番号らしい文字を見つける（Day081の規則を流用）。口座番号を想定して、7桁以上の数字の並びも止める
+  var TLD = '(?:com|net|org|jp|me|io|co|info|biz|xyz|app|dev|link|page|shop|site|online|tokyo|ly|gl|to|cc|tv|us|uk|ne|or|ac|go|ee|gle|be|gd|ai|fm|in|so|top|cn|ru|kr|tw|hk|ws|gg|sh|im|is|li|la|vip|club|live|work|fun|icu)';
+  var RE_DOMAIN = new RegExp('[^\\s.]+\\.' + TLD + '(?![a-z])');
+  var LEAD_WORDS = ['lineid', 'らいんid', 'id検索', '友だち追加', '友達追加', 'ともだち追加', 'qrこど'].map(wordKey);
+  // 振込先・口座を書かせない（偽の請求のように使わせない）。語の根で持つ
+  var MONEY_WORDS = ['振込', '振り込', 'ふりこみ', 'ふりこ', '口座', 'こうざ', '銀行', 'ぎんこう', '信用金庫', '信金', 'ゆうちょ', '郵便局', '通帳', '暗証', 'カード番号', '支店', '名義', 'bank', 'account'].map(wordKey);
+  var KANJI_DIGITS = '〇一二三四五六七八九';
+  // 日付（2026-10-25・2026/10/25・2026.10.25）は数字の並びに数えない
+  var RE_DATE = /\d{4}[\-\/.]\d{1,2}[\-\/.]\d{1,2}/g;
+  function blockedReason(s) {
+    var n = norm(s), compact = n.replace(/\s/g, ''), key = wordKey(s);
+    var dotted = compact.replace(/ドット|どっと|\(dot\)|\[dot\]|dot/g, '.');
+    if (/https?|:\/\/|www\.|tel:|mailto:/.test(compact) || RE_DOMAIN.test(n) || RE_DOMAIN.test(compact) || RE_DOMAIN.test(dotted)) return 'link';
+    if (hasWord(key, LEAD_WORDS)) return 'lead';
+    if (/@/.test(n)) return 'mail';
+    if (hasWord(key, MONEY_WORDS)) return 'money';
+    var digits = n.replace(/[〇一二三四五六七八九]/g, function (c) { return String(KANJI_DIGITS.indexOf(c)); }).replace(RE_DATE, ' ');
+    if (/\+\d[\d\s().\/_\-]{6,}/.test(digits)) return 'number';
+    var runs = digits.match(/\d[\d\s().\/_\-]*\d/g) || [];
+    for (var i = 0; i < runs.length; i++) if (runs[i].replace(/\D/g, '').length >= 7) return 'number';
+    return '';
+  }
+  var REASON = { link: 'リンク', mail: 'メールアドレス（@）', number: '7桁以上の数字（電話番号・口座番号など）' };
+
+  // 金額の文字 → 整数（空は null、読めないものは NaN）
+  function parseAmount(v) {
+    var s = String(v == null ? '' : v).normalize('NFKC').replace(/[,\s円]/g, '');
+    if (s === '') return null;
+    if (!/^\d+$/.test(s)) return NaN;
+    var n = Number(s);
+    return n > LIM.amount ? NaN : n;
+  }
+  function yen(n) { return (n < 0 ? '−' : '') + Math.abs(n).toLocaleString('ja-JP') + '円'; }
+  function validDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s); if (!m) return false;
+    var y = +m[1], mo = +m[2], d = +m[3]; if (y < 2000 || y > 2099) return false;
+    var dt = new Date(Date.UTC(y, mo - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+  }
+  function dateJa(s) {
+    if (!validDate(s)) return '';
+    var p = s.split('-').map(Number), w = new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay();
+    return p[0] + '年' + p[1] + '月' + p[2] + '日（' + WD[w] + '）';
+  }
+
+  function blankMember() { return { name: '', pct: '' }; }
+  function blankRow() { return { who: 0, item: '', amt: '' }; }
+  function emptyDraft() { return { event: '', date: '', mode: 0, members: [blankMember(), blankMember()], sales: [blankRow()], exp: [] }; }
+  function sampleDraft() {
+    return { event: '秋の手づくりワークショップ', date: '2026-10-25', mode: 1,
+      members: [{ name: 'さくら', pct: '60' }, { name: 'みどり', pct: '40' }],
+      sales: [{ who: 0, item: '当日の現金', amt: '38000' }, { who: 1, item: '事前の決済', amt: '42000' }],
+      exp: [{ who: 1, item: '会場代', amt: '15000' }, { who: 0, item: '材料費', amt: '9800' }, { who: 1, item: 'チラシ印刷', amt: '2200' }] };
+  }
+  function sanitizeDraft(o) {
+    var d = emptyDraft();
+    if (!o || typeof o !== 'object') return d;
+    if (typeof o.event === 'string') d.event = o.event.slice(0, 300);
+    if (typeof o.date === 'string') d.date = o.date.slice(0, 10);
+    d.mode = o.mode === 1 ? 1 : 0;
+    function str(v, max) { return typeof v === 'string' ? v.slice(0, max) : (typeof v === 'number' ? String(v).slice(0, max) : ''); }
+    if (Array.isArray(o.members) && o.members.length >= LIM.membersMin) {
+      d.members = o.members.slice(0, LIM.membersMax).map(function (m) { m = m || {}; return { name: str(m.name, 100), pct: str(m.pct, 10) }; });
+    }
+    function rows(a, max) {
+      return a.slice(0, max).map(function (r) {
+        r = r || {};
+        return { who: Number.isInteger(r.who) && r.who >= -1 && r.who < d.members.length ? r.who : 0, item: str(r.item, 100), amt: str(r.amt, 20) };
+      });
+    }
+    if (Array.isArray(o.sales) && o.sales.length) d.sales = rows(o.sales, LIM.sales);
+    if (Array.isArray(o.exp)) d.exp = rows(o.exp, LIM.exp);
+    return d;
+  }
+  function hasInput(d) {
+    return !!(clean(d.event) || d.members.some(function (m) { return clean(m.name); }) ||
+      d.sales.concat(d.exp).some(function (r) { return clean(r.item) || clean(r.amt); }));
+  }
+  // 設定 → 下書き（「直してリンクを作り直す」用）
+  function draftFrom(c) {
+    return { event: c.event, date: c.date, mode: c.mode,
+      members: c.members.map(function (m) { return { name: m[0], pct: c.mode === 1 ? String(m[1]) : '' }; }),
+      sales: c.sales.map(function (r) { return { who: r[0], item: r[1], amt: String(r[2]) }; }),
+      exp: c.exp.map(function (r) { return { who: r[0], item: r[1], amt: String(r[2]) }; }) };
+  }
+
+  // 入力 → 設定。外れた点は日本語の文で errors に入れる
+  function toConfig(d) {
+    var errs = [];
+    function txt(v, max, label, req) {
+      var s = clean(v);
+      if (req && !s) errs.push(label + 'を入れてください');
+      if (cpLen(s) > max) errs.push(label + 'は' + max + '字までです');
+      var b = blockedReason(s);
+      if (b === 'money') errs.push(label + '：振込先や口座に関わる言葉は入れられません（このページはお金の振込を扱いません）');
+      else if (b === 'lead') errs.push(label + '：LINE IDなど、連絡先を書くことはできません');
+      else if (b) errs.push(label + 'に' + REASON[b] + 'らしい文字は入れられません');
+      return s;
+    }
+    var event = txt(d.event, LIM.event, 'イベント名', false);
+    var date = clean(d.date);
+    if (date && !validDate(date)) { errs.push('開催日の形が正しくありません'); date = ''; }
+    var mode = d.mode === 1 ? 1 : 0;
+    var n = d.members.length, members = [], seen = {};
+    if (n < LIM.membersMin || n > LIM.membersMax) errs.push('メンバーは' + LIM.membersMin + '〜' + LIM.membersMax + '人です');
+    var pctSum = 0, pctOk = true;
+    d.members.forEach(function (m, i) {
+      var name = txt(m.name, LIM.name, (i + 1) + '人目の呼び名', true);
+      if (name) { if (seen[name]) errs.push('呼び名「' + name + '」が重なっています。呼び分けてください'); seen[name] = 1; }
+      var pct = 0;
+      if (mode === 1) {
+        var s = String(m.pct == null ? '' : m.pct).normalize('NFKC').replace(/[%\s]/g, '');
+        if (!/^\d{1,3}$/.test(s) || +s > 100) { errs.push((name || (i + 1) + '人目') + 'の割合を0〜100の整数で入れてください'); pctOk = false; }
+        else { pct = +s; pctSum += pct; }
+      }
+      members.push([name, pct]);
+    });
+    if (mode === 1 && pctOk && pctSum !== 100) errs.push('割合の合計が' + pctSum + '%です。合計が100%になるようにしてください');
+    function rowList(list, label, max, needOne) {
+      var out = [], used = 0;
+      list.forEach(function (r, i) {
+        var amtRaw = clean(r.amt), itemRaw = clean(r.item);
+        if (!amtRaw && !itemRaw) return; // 何も入れていない行は数えない
+        used++;
+        var lab = label + (i + 1);
+        var item = txt(r.item, LIM.item, lab + 'の内容', false);
+        if (!(Number.isInteger(r.who) && r.who >= 0 && r.who < n)) errs.push(lab + 'の' + (label === '売上' ? '受け取った人' : '立て替えた人') + 'を選んでください');
+        var a = parseAmount(r.amt);
+        if (a === null) errs.push(lab + 'の金額を入れてください');
+        else if (isNaN(a)) errs.push(lab + 'の金額は0〜' + LIM.amount.toLocaleString('ja-JP') + 'の整数で入れてください');
+        out.push([r.who, item, isNaN(a) || a === null ? 0 : a]);
+      });
+      if (needOne && !used) errs.push(label + 'を1件以上入れてください');
+      if (used > max) errs.push(label + 'は' + max + '件までです');
+      return out;
+    }
+    var sales = rowList(d.sales, '売上', LIM.sales, true);
+    var exp = rowList(d.exp, '経費', LIM.exp, false);
+    if (errs.length) return { cfg: null, errors: errs };
+    var cfg = { event: event, date: date, mode: mode, members: members, sales: sales, exp: exp };
+    if (encode(cfg).length > HASH_MAX) return { cfg: null, errors: ['文字が多すぎてリンクにできません。絵文字や文を短くしてください'] };
+    return { cfg: cfg, errors: [] };
+  }
+
+  // 精算の計算（すべて整数）
+  function compute(c) {
+    var n = c.members.length, i;
+    var recv = [], paid = [];
+    for (i = 0; i < n; i++) { recv.push(0); paid.push(0); }
+    c.sales.forEach(function (r) { recv[r[0]] += r[2]; });
+    c.exp.forEach(function (r) { paid[r[0]] += r[2]; });
+    var S = recv.reduce(function (a, b) { return a + b; }, 0), E = paid.reduce(function (a, b) { return a + b; }, 0), P = S - E, A = Math.abs(P);
+    var share = c.members.map(function (m) { return c.mode === 1 ? Math.floor(A * m[1] / 100) : Math.floor(A / n); });
+    var rest = A - share.reduce(function (a, b) { return a + b; }, 0);
+    share[0] += rest; // 1円未満を切り捨てて余った端数は、一覧の1人目に寄せる
+    if (P < 0) share = share.map(function (v) { return -v; });
+    var hand = [], diff = [];
+    for (i = 0; i < n; i++) { hand.push(recv[i] - paid[i]); diff.push(share[i] - hand[i]); }
+    // 渡す側・受け取る側を金額の大きい順（同額はメンバーの順）に並べ、大きいものどうしから組み合わせる
+    function order(sign) {
+      var idx = []; for (var k = 0; k < n; k++) if (sign * diff[k] > 0) idx.push(k);
+      return idx.sort(function (a, b) { return Math.abs(diff[b]) - Math.abs(diff[a]) || a - b; }).map(function (k) { return { k: k, v: Math.abs(diff[k]) }; });
+    }
+    var givers = order(-1), takers = order(1), transfers = [], g = 0, t = 0;
+    while (g < givers.length && t < takers.length) {
+      var amt = Math.min(givers[g].v, takers[t].v);
+      transfers.push([givers[g].k, takers[t].k, amt]);
+      givers[g].v -= amt; takers[t].v -= amt;
+      if (!givers[g].v) g++;
+      if (!takers[t].v) t++;
+    }
+    return { S: S, E: E, P: P, recv: recv, paid: paid, share: share, hand: hand, diff: diff, rest: rest, transfers: transfers };
+  }
+  function transferText(c, tr) { return c.members[tr[0]][0] + ' → ' + c.members[tr[1]][0] + ' ' + yen(tr[2]); }
+  function basisText(c, r) {
+    var n = c.members.length;
+    var how = c.mode === 1 ? c.members.map(function (m) { return m[0] + ' ' + m[1] + '%'; }).join('・') + ' で' : n + '人で均等に';
+    return r.P < 0 ? '赤字 ' + yen(-r.P) + 'を ' + how + '負担すると' : '残り ' + yen(r.P) + 'を ' + how + '分けると';
+  }
+  function byPerson(c, arr) {
+    var parts = []; c.members.forEach(function (m, i) { if (arr[i]) parts.push(m[0] + ' ' + yen(arr[i])); });
+    return parts.join('／');
+  }
+
+  // 相手に送る明細の文
+  function message(c, url) {
+    var r = compute(c), L = [];
+    L.push('【' + (c.event ? c.event + ' ' : '') + '売上の分け方】');
+    if (c.date) L.push('開催日 ' + dateJa(c.date));
+    L.push('売上 ' + yen(r.S) + (r.S ? '（' + byPerson(c, r.recv) + ' を受け取り）' : ''));
+    L.push('経費 ' + yen(r.E) + (r.E ? '（' + byPerson(c, r.paid) + ' を立て替え）' : ''));
+    L.push(basisText(c, r));
+    L.push(c.members.map(function (m, i) { return m[0] + ' ' + yen(Math.abs(r.share[i])); }).join('／') + (r.P < 0 ? ' の負担' : ''));
+    L.push('精算');
+    if (r.transfers.length) r.transfers.forEach(function (tr) { L.push(transferText(c, tr)); });
+    else L.push('精算はありません');
+    if (url) { L.push('明細のリンク'); L.push(url); }
+    return L.join('\n');
+  }
+
+  // 設定 ⇄ URLの # 以降
+  function b64urlEncode(str) {
+    var bytes = new TextEncoder().encode(str), bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function b64urlDecode(s) {
+    var b = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (b.length % 4) b += '=';
+    var bin = atob(b), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  }
+  function encode(c) { return 'v1=' + b64urlEncode(JSON.stringify([1, c.event, c.date, c.mode, c.members, c.sales, c.exp])); }
+  function makeUrl(base, c) { return base + '#' + encode(c); }
+  function isStr(v, max, req) { return typeof v === 'string' && cpLen(v) <= max && (!req || v.length > 0) && v === clean(v) && !blockedReason(v); }
+  function isAmt(v) { return Number.isInteger(v) && v >= 0 && v <= LIM.amount; }
+  function fromArray(a) {
+    if (!Array.isArray(a) || a.length !== 7 || a[0] !== 1) return null;
+    if (!isStr(a[1], LIM.event, false)) return null;
+    if (typeof a[2] !== 'string' || (a[2] !== '' && !validDate(a[2]))) return null;
+    if (a[3] !== 0 && a[3] !== 1) return null;
+    var ms = a[4], ss = a[5], es = a[6];
+    if (!Array.isArray(ms) || ms.length < LIM.membersMin || ms.length > LIM.membersMax) return null;
+    if (!Array.isArray(ss) || ss.length < 1 || ss.length > LIM.sales) return null;
+    if (!Array.isArray(es) || es.length > LIM.exp) return null;
+    var seen = {}, sum = 0, i;
+    for (i = 0; i < ms.length; i++) {
+      var m = ms[i];
+      if (!Array.isArray(m) || m.length !== 2 || !isStr(m[0], LIM.name, true) || seen[m[0]]) return null;
+      seen[m[0]] = 1;
+      if (!Number.isInteger(m[1]) || m[1] < 0 || m[1] > 100 || (a[3] === 0 && m[1] !== 0)) return null;
+      sum += m[1];
+    }
+    if (a[3] === 1 && sum !== 100) return null;
+    function rowsOk(rs) {
+      for (var k = 0; k < rs.length; k++) {
+        var r = rs[k];
+        if (!Array.isArray(r) || r.length !== 3 || !Number.isInteger(r[0]) || r[0] < 0 || r[0] >= ms.length || !isStr(r[1], LIM.item, false) || !isAmt(r[2])) return false;
+      }
+      return true;
+    }
+    if (!rowsOk(ss) || !rowsOk(es)) return null;
+    var cp = function (x) { return x.map(function (r) { return r.slice(); }); };
+    return { event: a[1], date: a[2], mode: a[3], members: cp(ms), sales: cp(ss), exp: cp(es) };
+  }
+  function decodeHash(h) {
+    try {
+      h = String(h == null ? '' : h).replace(/^#/, '');
+      if (h.length > HASH_MAX) return null;
+      var m = /^v1=([A-Za-z0-9_-]+)$/.exec(h);
+      if (!m) return null;
+      return fromArray(JSON.parse(b64urlDecode(m[1])));
+    } catch (e) { return null; }
+  }
+
+  return {
+    KEY: KEY, LIM: LIM, HASH_MAX: HASH_MAX, URL_MAX: URL_MAX,
+    clean: clean, cpLen: cpLen, blockedReason: blockedReason, parseAmount: parseAmount, yen: yen, validDate: validDate, dateJa: dateJa,
+    blankMember: blankMember, blankRow: blankRow, emptyDraft: emptyDraft, sampleDraft: sampleDraft, sanitizeDraft: sanitizeDraft, hasInput: hasInput, draftFrom: draftFrom,
+    toConfig: toConfig, compute: compute, transferText: transferText, basisText: basisText, message: message,
+    encode: encode, makeUrl: makeUrl, decodeHash: decodeHash
+  };
+})();
+if (typeof module !== 'undefined') module.exports = CS;
+</script>
+
+<script id="ui">
+(function () {
+  var app = document.getElementById('app');
+  var uid = 0;
+  var TAX_NOTE = '税金の扱い（どちらの売上にするか等）は、このページでは決めません。税理士や税務署に確認してください。';
+
+  function h(tag, a, kids) {
+    var e = document.createElement(tag);
+    if (a) Object.keys(a).forEach(function (k) {
+      var v = a[k];
+      if (v == null || v === false) return;
+      if (k === 'class') e.className = v;
+      else if (k === 'text') e.textContent = v;
+      else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v);
+      else if (v === true) e.setAttribute(k, '');
+      else e.setAttribute(k, v);
+    });
+    (kids || []).forEach(function (c) { if (c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function baseUrl() { return location.href.split('#')[0].split('?')[0]; }
+  function copyText(text, done) {
+    function fallback() {
+      var ok = false;
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+        document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+        ok = document.execCommand('copy'); document.body.removeChild(ta);
+      } catch (e) { ok = false; }
+      done(ok);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try { navigator.clipboard.writeText(text).then(function () { done(true); }, fallback); } catch (e) { fallback(); }
+    } else fallback();
+  }
+  function selectAll(ta) { try { ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length); } catch (e) { } }
+  function fitHeight(ta) { if (ta.isConnected) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 4) + 'px'; } }
+
+  /* ---------------- 精算の結果（作る画面の右・見る画面の共通） ---------------- */
+  function renderResult(root, cfg) {
+    var r = CS.compute(cfg);
+    var settle = h('section', { class: 'settle', 'aria-label': '精算' }, [h('h3', { text: '精算（誰が誰に渡すか）' })]);
+    if (r.transfers.length) r.transfers.forEach(function (tr) {
+      settle.appendChild(h('p', { class: 'tr' }, [cfg.members[tr[0]][0] + ' → ' + cfg.members[tr[1]][0] + ' ', h('span', { class: 'amt', text: CS.yen(tr[2]) })]));
+    });
+    else settle.appendChild(h('p', { class: 'none', text: '精算はありません' }));
+    root.appendChild(settle);
+    root.appendChild(h('div', { class: 'totals' }, [
+      h('div', null, [h('span', { class: 'k', text: '売上' }), h('span', { class: 'v', text: CS.yen(r.S) })]),
+      h('div', null, [h('span', { class: 'k', text: '経費' }), h('span', { class: 'v', text: CS.yen(r.E) })]),
+      h('div', null, [h('span', { class: 'k', text: r.P < 0 ? '赤字' : '残り' }), h('span', { class: 'v', text: CS.yen(Math.abs(r.P)) })])
+    ]));
+    if (r.P < 0) root.appendChild(h('p', { class: 'deficit', text: '赤字 ' + CS.yen(-r.P) + 'を、同じ分け方で負担します。' }));
+    root.appendChild(h('p', { class: 'basis', text: CS.basisText(cfg, r) + '、1人ずつは次のとおりです。' }));
+    var people = h('div', { class: 'people' });
+    cfg.members.forEach(function (m, i) {
+      var d = r.diff[i];
+      people.appendChild(h('section', { class: 'person', 'aria-label': m[0] }, [
+        h('div', { class: 'ph' }, [h('span', { class: 'pn', text: m[0] }), h('span', { class: 'pd', text: d > 0 ? CS.yen(d) + ' 受け取る' : d < 0 ? CS.yen(-d) + ' 渡す' : '精算なし' })]),
+        h('dl', null, [
+          h('dt', { text: r.P < 0 ? '負担' : '取り分' }), h('dd', { text: CS.yen(Math.abs(r.share[i])) }),
+          h('dt', { text: '受け取った売上' }), h('dd', { text: CS.yen(r.recv[i]) }),
+          h('dt', { text: '立て替えた経費' }), h('dd', { text: CS.yen(r.paid[i]) })
+        ])
+      ]));
+    });
+    root.appendChild(people);
+    if (r.rest) root.appendChild(h('p', { class: 'small', text: '1円未満は切り捨て、余った端数' + CS.yen(r.rest) + 'は一覧の1人目（' + cfg.members[0][0] + '）に寄せています。' }));
+    return r;
+  }
+  function renderLists(root, cfg) {
+    function list(title, rows) {
+      root.appendChild(h('h3', { text: title }));
+      if (!rows.length) { root.appendChild(h('p', { class: 'small', text: 'なし' })); return; }
+      root.appendChild(h('ul', { class: 'list' }, rows.map(function (x) {
+        return h('li', null, [h('span', { text: cfg.members[x[0]][0] + (x[1] ? '｜' + x[1] : '') }), h('span', { text: CS.yen(x[2]) })]);
+      })));
+    }
+    list('受け取った売上', cfg.sales);
+    list('立て替えた経費', cfg.exp);
+  }
+
+  /* ---------------- 作る画面 ---------------- */
+  var storageOk = (function () { try { localStorage.setItem(CS.KEY + '-probe', '1'); localStorage.removeItem(CS.KEY + '-probe'); return true; } catch (e) { return false; } })();
+  function loadDraft() {
+    try { var s = localStorage.getItem(CS.KEY); if (s) return CS.sanitizeDraft(JSON.parse(s)); } catch (e) { }
+    return CS.emptyDraft();
+  }
+  function saveDraft(d) { try { localStorage.setItem(CS.KEY, JSON.stringify(d)); } catch (e) { storageOk = false; } }
+
+  function renderMake() {
+    document.title = '共催イベントの売上分け';
+    app.textContent = '';
+    var draft = loadDraft(), showErrors = false, timer = null;
+    [
+      h('h1', { text: '共催イベントの売上分け' }),
+      h('p', { class: 'lead', text: '2〜4人で開いたイベントの売上と経費を入れると、残りを均等か割合で分けて、誰が誰にいくら渡すかを出します。明細はリンクにして、一緒に開いた相手に送れます。' }),
+      h('ul', { class: 'notes' }, [
+        h('li', { text: '売上は「誰が受け取ったか」、経費は「誰が立て替えたか」ごとに入れてください。' }),
+        h('li', { text: '決済サービスの手数料が引かれている場合は、実際に入金された額を売上に入れるか、手数料を経費に入れてください。' }),
+        h('li', { text: 'このページはお金を動かしません。振込先・口座番号・電話番号・リンクらしい文字は入れられないようにしています（すべての言い方は防げません）。' }),
+        h('li', { text: '入力した内容は、この端末のブラウザで計算し、次回のために端末に残ります。' })
+      ])
+    ].forEach(function (e) { app.appendChild(e); });
+    if (!storageOk) app.appendChild(h('div', { class: 'errors', text: 'この端末では入力を保存できません。ページを閉じると入力が消えます。' }));
+
+    var layout = h('div', { class: 'layout' }), left = h('div'), right = h('div', { class: 'sticky' });
+    layout.appendChild(left); layout.appendChild(right); app.appendChild(layout);
+    var errBox = h('div', { class: 'errors', role: 'alert' }); errBox.hidden = true;
+    var resRoot = h('div');
+    var linkBox = h('div', { class: 'panel' }); linkBox.hidden = true;
+
+    function changed() {
+      saveDraft(draft);
+      linkBox.hidden = true;
+      if (showErrors) refreshErrors();
+      clearTimeout(timer); timer = setTimeout(renderRes, 120);
+    }
+    function refreshErrors() {
+      var r = CS.toConfig(draft);
+      errBox.textContent = '';
+      if (r.errors.length) {
+        errBox.hidden = false;
+        errBox.appendChild(h('strong', { text: '次の点を直してください' }));
+        errBox.appendChild(h('ul', null, r.errors.map(function (m) { return h('li', { text: m }); })));
+      } else errBox.hidden = true;
+      return r;
+    }
+    var msgTa = h('textarea', { readonly: true, class: 'msgbox', rows: 9, 'aria-label': '明細の文' });
+    var msgCp = h('button', { type: 'button', class: 'primary', text: '明細の文をコピー' });
+    var msgMsg = h('p', { class: 'okmsg', role: 'status' });
+    var msgBox = h('div', { class: 'panel' }, [h('h3', { text: '明細の文' }),
+      h('p', { class: 'small', text: 'LINEなどに貼って送れます。リンクを作ると、文の最後にリンクが付きます。' }), msgTa, h('div', { class: 'stack' }, [msgCp]), msgMsg]);
+    var curCfg = null, curUrl = '';
+    msgCp.addEventListener('click', function () {
+      copyText(msgTa.value, function (ok) {
+        if (ok) msgMsg.textContent = 'コピーしました。LINEなどに貼り付けて送ってください。';
+        else { msgMsg.textContent = 'コピーできませんでした。上の文を長押しして、コピーしてください。'; selectAll(msgTa); }
+      });
+    });
+    function renderRes() {
+      var r = CS.toConfig(draft);
+      resRoot.textContent = '';
+      curCfg = r.cfg; curUrl = '';
+      if (!r.cfg) {
+        msgBox.hidden = true;
+        resRoot.appendChild(h('p', { class: 'small', text: '入力が整うと、ここに精算の結果が出ます。' + (r.errors.length ? '（いまの状態: ' + r.errors[0] + '）' : '') }));
+        return;
+      }
+      renderResult(resRoot, r.cfg);
+      msgBox.hidden = false;
+      msgTa.value = CS.message(r.cfg, ''); msgMsg.textContent = '';
+      fitHeight(msgTa);
+    }
+    function textField(obj, key, label, hint, max, ph, extra) {
+      var id = 'f' + (++uid);
+      var input = h('input', Object.assign({ type: 'text', id: id, maxlength: max, autocomplete: 'off', placeholder: ph || null }, extra || {}));
+      input.value = obj[key];
+      input.addEventListener('input', function () { obj[key] = input.value; changed(); });
+      return h('div', null, [h('label', { class: 'f', for: id }, [label, hint ? h('span', { class: 'hint', text: ' ' + hint }) : null]), input]);
+    }
+
+    left.appendChild(h('div', { class: 'btns' }, [
+      h('button', { type: 'button', text: 'サンプルを入れる', onclick: function () {
+        if (CS.hasInput(draft) && !confirm('いまの入力を、サンプルに置き換えます。よろしいですか？')) return;
+        draft = CS.sampleDraft(); buildForm(); changed();
+      } }),
+      h('button', { type: 'button', text: '入力を空にする', onclick: function () {
+        if (!confirm('入力をすべて消します。よろしいですか？')) return;
+        draft = CS.emptyDraft(); showErrors = false; errBox.hidden = true; buildForm(); changed();
+      } })
+    ]));
+    var form = h('div', { class: 'panel' });
+    left.appendChild(form);
+    var membersBox = h('div'), salesBox = h('div'), expBox = h('div');
+
+    function buildForm() {
+      form.textContent = '';
+      form.appendChild(textField(draft, 'event', 'イベント名', '（任意・30字まで）', CS.LIM.event, '例 秋の手づくりワークショップ'));
+      var did = 'f' + (++uid), dateIn = h('input', { type: 'date', id: did, min: '2000-01-01', max: '2099-12-31' });
+      dateIn.value = draft.date;
+      dateIn.addEventListener('input', function () { draft.date = dateIn.value; changed(); });
+      form.appendChild(h('div', null, [h('label', { class: 'f', for: did }, ['開催日', h('span', { class: 'hint', text: ' （任意）' })]), dateIn]));
+      form.appendChild(h('div', { class: 'sec-h' }, [h('h2', { text: 'メンバーと分け方' }), h('span', { class: 'hint', text: '2〜4人' })]));
+      var seg = h('fieldset', { class: 'seg' }, [h('legend', { text: '残りの分け方' })]);
+      [['均等に分ける', 0], ['割合で分ける', 1]].forEach(function (o) {
+        var input = h('input', { type: 'radio', name: 'mode', value: String(o[1]) });
+        input.checked = draft.mode === o[1];
+        input.addEventListener('change', function () { if (input.checked) { draft.mode = o[1]; buildMembers(); changed(); } });
+        seg.appendChild(h('label', null, [input, h('span', { text: o[0] })]));
+      });
+      form.appendChild(seg);
+      form.appendChild(membersBox); buildMembers();
+      form.appendChild(h('div', { class: 'sec-h' }, [h('h2', { text: '売上（受け取ったお金）' }), h('span', { class: 'hint', text: CS.LIM.sales + '件まで' })]));
+      form.appendChild(salesBox); buildRows(salesBox, draft.sales, '売上', '受け取った人', CS.LIM.sales, 1, '例 当日の現金');
+      form.appendChild(h('div', { class: 'sec-h' }, [h('h2', { text: '経費（立て替えたお金）' }), h('span', { class: 'hint', text: CS.LIM.exp + '件まで・なければ空のまま' })]));
+      form.appendChild(expBox); buildRows(expBox, draft.exp, '経費', '立て替えた人', CS.LIM.exp, 0, '例 会場代');
+      form.appendChild(h('p', { class: 'small', text: '金額は円の整数で入れます（カンマは付けても付けなくても大丈夫です）。' }));
+    }
+    function pctSumText() {
+      var s = 0, ok = true;
+      draft.members.forEach(function (m) { var v = String(m.pct).normalize('NFKC').trim(); if (/^\d{1,3}$/.test(v)) s += +v; else ok = false; });
+      return '合計 ' + s + '%' + (ok && s === 100 ? '（OK）' : '（100%にしてください）');
+    }
+    function buildMembers() {
+      membersBox.textContent = '';
+      var n = draft.members.length, sumEl = h('p', { class: 'sum', role: 'status' });
+      draft.members.forEach(function (m, i) {
+        var nid = 'f' + (++uid);
+        var name = h('input', { type: 'text', id: nid, maxlength: CS.LIM.name, autocomplete: 'off', placeholder: i === 0 ? '例 さくら' : '例 みどり', 'aria-label': (i + 1) + '人目の呼び名' });
+        name.value = m.name;
+        name.addEventListener('input', function () { m.name = name.value; changed(); refreshWhoLabels(); });
+        var tail;
+        if (draft.mode === 1) {
+          var pin = h('input', { type: 'text', inputmode: 'numeric', maxlength: 3, class: 'num-in', autocomplete: 'off', 'aria-label': (i + 1) + '人目の割合（%）' });
+          pin.value = m.pct;
+          pin.addEventListener('input', function () { m.pct = pin.value; sumEl.textContent = pctSumText(); changed(); });
+          tail = h('span', { class: 'pct' }, [pin, '%']);
+        } else tail = h('button', { type: 'button', text: '消す', 'aria-label': (i + 1) + '人目を消す', disabled: n <= CS.LIM.membersMin, onclick: function () { removeMember(i); } });
+        membersBox.appendChild(h('div', { class: 'mem' }, [h('span', { class: 'no', text: (i + 1) + '人目' }), name, tail]));
+      });
+      if (draft.mode === 1) { sumEl.textContent = pctSumText(); membersBox.appendChild(sumEl); }
+      var btns = h('div', { class: 'btns' });
+      if (n < CS.LIM.membersMax) btns.appendChild(h('button', { type: 'button', text: '＋ メンバーを足す', onclick: function () {
+        draft.members.push(CS.blankMember()); buildMembers(); rebuildRows(); changed();
+        var ins = membersBox.querySelectorAll('.mem input[type=text]'); if (ins.length) ins[draft.mode === 1 ? ins.length - 2 : ins.length - 1].focus();
+      } }));
+      if (draft.mode === 1 && n > CS.LIM.membersMin) btns.appendChild(h('button', { type: 'button', text: '最後のメンバーを消す', onclick: function () { removeMember(n - 1); } }));
+      membersBox.appendChild(btns);
+    }
+    function removeMember(i) {
+      var label = CS.clean(draft.members[i].name) || (i + 1) + '人目';
+      var used = draft.sales.concat(draft.exp).some(function (r) { return r.who === i; });
+      if (!confirm(label + 'を消します。' + (used ? label + 'の売上・経費の行は「選んでください」に戻ります。' : '') + 'よろしいですか？')) return;
+      draft.members.splice(i, 1);
+      draft.sales.concat(draft.exp).forEach(function (r) { if (r.who === i) r.who = -1; else if (r.who > i) r.who--; });
+      buildMembers(); rebuildRows(); changed();
+    }
+    var whoSelects = [];
+    function refreshWhoLabels() {
+      whoSelects.forEach(function (sel) {
+        [].forEach.call(sel.options, function (o) { var k = +o.value; if (k >= 0) o.textContent = CS.clean(draft.members[k].name) || (k + 1) + '人目'; });
+      });
+    }
+    function rebuildRows() {
+      buildRows(salesBox, draft.sales, '売上', '受け取った人', CS.LIM.sales, 1, '例 当日の現金');
+      buildRows(expBox, draft.exp, '経費', '立て替えた人', CS.LIM.exp, 0, '例 会場代');
+    }
+    function buildRows(box, rows, label, whoLabel, max, minRows, ph) {
+      box.textContent = '';
+      whoSelects = whoSelects.filter(function (s) { return s.isConnected; });
+      rows.forEach(function (r, i) {
+        var sid = 'f' + (++uid), iid = 'f' + (++uid), aid = 'f' + (++uid);
+        var sel = h('select', { id: sid });
+        sel.appendChild(h('option', { value: '-1', text: '選んでください' }));
+        draft.members.forEach(function (m, k) { sel.appendChild(h('option', { value: String(k), text: CS.clean(m.name) || (k + 1) + '人目' })); });
+        sel.value = String(r.who);
+        sel.addEventListener('change', function () { r.who = +sel.value; changed(); });
+        whoSelects.push(sel);
+        var item = h('input', { type: 'text', id: iid, maxlength: CS.LIM.item, autocomplete: 'off', placeholder: ph });
+        item.value = r.item; item.addEventListener('input', function () { r.item = item.value; changed(); });
+        var amt = h('input', { type: 'text', id: aid, inputmode: 'numeric', maxlength: 12, class: 'num-in', autocomplete: 'off', placeholder: '0' });
+        amt.value = r.amt; amt.addEventListener('input', function () { r.amt = amt.value; changed(); });
+        box.appendChild(h('div', { class: 'row' }, [
+          h('div', { class: 'row-grid' }, [
+            h('div', null, [h('label', { class: 'f', for: sid, text: whoLabel }), sel]),
+            h('div', { class: 'wide' }, [h('label', { class: 'f', for: iid }, ['内容', h('span', { class: 'hint', text: ' （任意）' })]), item]),
+            h('div', null, [h('label', { class: 'f', for: aid, text: '金額（円）' }), amt])
+          ]),
+          h('div', { class: 'row-foot' }, [h('span', { class: 'rno', text: label + (i + 1) }),
+            h('button', { type: 'button', text: '消す', 'aria-label': label + (i + 1) + 'を消す', disabled: rows.length <= minRows, onclick: function () {
+              if ((CS.clean(r.item) || CS.clean(r.amt)) && !confirm(label + (i + 1) + 'を消します。よろしいですか？')) return;
+              rows.splice(i, 1); buildRows(box, rows, label, whoLabel, max, minRows, ph); changed();
+            } })])
+        ]));
+      });
+      if (rows.length < max) box.appendChild(h('div', { class: 'btns' }, [h('button', { type: 'button', text: '＋ ' + label + 'を足す', onclick: function () {
+        var who = rows.length ? rows[rows.length - 1].who : 0;
+        rows.push({ who: who, item: '', amt: '' }); buildRows(box, rows, label, whoLabel, max, minRows, ph); changed();
+        var ins = box.querySelectorAll('.row input[type=text]'); if (ins.length) ins[ins.length - 2].focus();
+      } })]));
+    }
+    buildForm();
+
+    var lenEl = h('p', { class: 'len' }), urlTa = h('textarea', { readonly: true, rows: 4, class: 'urlbox', 'aria-label': '共有用URL' });
+    var cpBtn = h('button', { type: 'button', class: 'primary', text: 'URLをコピー' });
+    var shBtn = h('button', { type: 'button', text: '共有' });
+    var cpMsg = h('p', { class: 'okmsg', role: 'status' });
+    shBtn.hidden = typeof navigator.share !== 'function';
+    cpBtn.addEventListener('click', function () {
+      copyText(curUrl, function (ok) {
+        if (ok) cpMsg.textContent = 'コピーしました。一緒に開いた相手に送ってください。';
+        else { cpMsg.textContent = 'コピーできませんでした。上のURLを長押しして、コピーしてください。'; selectAll(urlTa); }
+      });
+    });
+    shBtn.addEventListener('click', function () {
+      var p; try { p = navigator.share({ url: curUrl }); } catch (e) { cpMsg.textContent = '共有できませんでした。URLをコピーしてください。'; return; }
+      if (p && p.catch) p.catch(function (e) { if (!e || e.name !== 'AbortError') cpMsg.textContent = '共有できませんでした。URLをコピーしてください。'; });
+    });
+    linkBox.appendChild(h('h3', { text: '相手に送る明細のリンク' }));
+    linkBox.appendChild(lenEl); linkBox.appendChild(urlTa);
+    linkBox.appendChild(h('div', { class: 'btns' }, [cpBtn, shBtn]));
+    linkBox.appendChild(cpMsg);
+    linkBox.appendChild(h('p', { class: 'small', text: '作ったリンクは、この端末に保存されません。URLを控えてください。相手はリンクから同じ明細を見て、違っていれば直して送り返せます。' }));
+
+    var make = h('button', { type: 'button', class: 'primary', text: '明細のリンクを作る' });
+    make.addEventListener('click', function () {
+      showErrors = true;
+      var r = refreshErrors();
+      if (!r.cfg) { linkBox.hidden = true; if (errBox.scrollIntoView) errBox.scrollIntoView({ block: 'nearest' }); return; }
+      curCfg = r.cfg;
+      curUrl = CS.makeUrl(baseUrl(), r.cfg);
+      var len = Array.from(curUrl).length, over = len > CS.URL_MAX;
+      lenEl.textContent = 'URLの長さ: ' + len.toLocaleString('ja-JP') + ' / ' + CS.URL_MAX.toLocaleString('ja-JP') + '文字' + (over ? '（長すぎます。内容の文字や行を減らしてください）' : '');
+      urlTa.value = over ? '' : curUrl; cpMsg.textContent = '';
+      cpBtn.disabled = over; shBtn.disabled = over;
+      if (!over) { msgTa.value = CS.message(r.cfg, curUrl); fitHeight(msgTa); msgMsg.textContent = ''; }
+      linkBox.hidden = false;
+      // 2列のときは右の列を先頭に戻し、精算の行が隠れないようにする（1列のときはリンクの欄まで送る）
+      if (right.scrollHeight > right.clientHeight + 1 && getComputedStyle(right).overflowY === 'auto') right.scrollTop = 0;
+      else if (linkBox.scrollIntoView) linkBox.scrollIntoView({ block: 'nearest' });
+    });
+    left.appendChild(h('div', { class: 'stack' }, [make]));
+    left.appendChild(errBox);
+    right.appendChild(h('h2', { text: '精算の結果' }));
+    right.appendChild(resRoot);
+    right.appendChild(linkBox);
+    right.appendChild(msgBox);
+    right.appendChild(h('p', { class: 'tax', text: TAX_NOTE }));
+    renderRes();
+  }
+
+  /* ---------------- リンクを開いたとき（見る画面） ---------------- */
+  function renderViewPage(cfg) {
+    document.title = (cfg.event ? cfg.event + '｜' : '') + '売上の分け方';
+    app.textContent = '';
+    var page = h('div', { class: 'viewpage' }); app.appendChild(page);
+    page.appendChild(h('div', { class: 'notice', text: 'この明細は、リンクを作った方が入力したものです。当サイトは内容を確認していません。お金の振込や、口座・個人情報を入力する画面ではありません。' }));
+    page.appendChild(h('h1', { class: 'v-event', text: (cfg.event ? cfg.event + ' ' : '') + '売上の分け方' }));
+    if (cfg.date) page.appendChild(h('p', { class: 'v-date', text: '開催日 ' + CS.dateJa(cfg.date) }));
+    renderResult(page, cfg);
+    renderLists(page, cfg);
+    page.appendChild(h('p', { class: 'tax', text: TAX_NOTE }));
+    var url = location.href.split('?')[0];
+    var ta = h('textarea', { readonly: true, class: 'msgbox', rows: 9, 'aria-label': '明細の文' });
+    ta.value = CS.message(cfg, url);
+    var msg = h('p', { class: 'okmsg', role: 'status' });
+    var cp = h('button', { type: 'button', class: 'primary', text: '明細の文をコピー' });
+    cp.addEventListener('click', function () {
+      copyText(ta.value, function (ok) {
+        if (ok) msg.textContent = 'コピーしました。';
+        else { msg.textContent = 'コピーできませんでした。上の文を長押しして、コピーしてください。'; selectAll(ta); }
+      });
+    });
+    var edit = h('button', { type: 'button', text: 'この内容を直してリンクを作り直す', onclick: function () {
+      var cur = loadDraft();
+      if (CS.hasInput(cur) && !confirm('この端末に残っている入力を、この明細の内容に置き換えます。よろしいですか？')) return;
+      saveDraft(CS.draftFrom(cfg)); goMake();
+    } });
+    page.appendChild(h('div', { class: 'panel' }, [h('h3', { text: '明細の文' }), ta, h('div', { class: 'stack' }, [cp, edit]), msg]));
+    fitHeight(ta);
+    page.appendChild(h('button', { type: 'button', class: 'linklike', text: '自分で売上分けの明細を作る', onclick: function () {
+      saveDraft(CS.emptyDraft()); goMake();
+    } }));
+  }
+  function renderBroken() {
+    document.title = '共催イベントの売上分け';
+    app.textContent = '';
+    app.appendChild(h('h1', { text: '明細が読み取れませんでした' }));
+    app.appendChild(h('div', { class: 'errors', text: 'リンクが壊れているか、対応していない形式です。リンクを送ってくれた方に、もう一度確認してください。' }));
+    app.appendChild(h('button', { type: 'button', text: '売上分けの明細を作る画面へ', onclick: goMake }));
+  }
+  function goMake() {
+    try { history.pushState(null, '', baseUrl()); } catch (e) { location.hash = ''; }
+    route();
+  }
+  function route() {
+    var hash = location.hash;
+    if (!hash || hash === '#') renderMake();
+    else { var cfg = CS.decodeHash(hash); if (cfg) renderViewPage(cfg); else renderBroken(); }
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener('hashchange', route);
+  route();
+})();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "b4c9f7e78daf4edb84ef52b88633f649"}'></script>
+</body>
+</html>
