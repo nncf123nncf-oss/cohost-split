@@ -133,7 +133,7 @@ eq('S9 bad date', E(base({ date: '2026-02-30' })), ['開催日の形が正しく
 eq('S9 sales 9', E(draft(['A', 'B'], 0, Array(9).fill([0, '', 1]), [])), ['売上は8件までです']);
 eq('S9 exp 11', E(draft(['A', 'B'], 0, [[0, '', 1]], Array(11).fill([0, '', 1]))), ['経費は10件までです']);
 const stop = ['https://a.jp', 'www.example', 'example.com', 'ネイル.com', 'bit.ly/abc', 'a@b', '090-1234-5678', '０９０１２３４５６７８', '〇九〇一二三四五六七八', '+81 90 1234',
-  '振込先', 'お振り込み', 'ふりこみ', '口座', '普通 1234567', 'みずほ銀行', '信用金庫', 'ゆうちょ', '通帳', '暗証', '支店', '名義', 'LINE ID', '1234567', '12-345-67'];
+  '振込先', 'お振り込み', 'ふりこみ', '口座', '普通 1234567', 'みずほ銀行', '信用金庫', 'ゆうちょ', '通帳', '暗証', '名義', 'LINE ID', '1234567', '12-345-67'];
 stop.forEach(s => eq('S9 stop ' + s, CS.blockedReason(s) !== '', true));
 const pass9 = ['材料費', '会場代 2時間', 'チラシ500枚', '当日の現金', '事前の決済', 'PayPayの売上', '2026-10-25の会場代', '10/25 マルシェ', 'カード決済', '手数料 3.6%', '交通費（往復）', '123456'];
 pass9.forEach(s => eq('S9 pass ' + s, CS.blockedReason(s), ''));
@@ -160,6 +160,31 @@ eq('S11 card2 message', CS.message(c2, '').split('\n'), [
   '【売上の分け方】', '売上 45,000円（あおい 45,000円 を受け取り）', '経費 14,000円（ひなた 12,000円／れん 2,000円 を立て替え）',
   '残り 31,000円を 3人で均等に分けると', 'あおい 10,334円／ひなた 10,333円／れん 10,333円', '精算', 'あおい → ひなた 22,333円', 'あおい → れん 12,333円']);
 eq('S11 deficit message line', CS.message(c4, '').split('\n')[4], 'A 7,500円／B 7,500円 の負担');
+
+// レビュー①の反映（2026-10-31）
+const ch = (...c) => String.fromCharCode(...c);
+const RLO = ch(0x202e), LRO = ch(0x202d), PDF = ch(0x202c), ZWSP = ch(0x200b), LRI = ch(0x2066), FILL = ch(0x3164);
+// 🔴1 向きを変える文字・見えない文字は落とす（作る画面）／入ったリンクは開かない（見る画面）
+eq('R1 clean bidi', CS.clean(RLO + LRO + 'さくら' + PDF), 'さくら');
+eq('R1 clean zwsp/lri/filler', CS.clean('み' + ZWSP + 'ど' + LRI + 'り' + FILL), 'みどり');
+eq('R1 bidi name in config', CS.toConfig(draft([RLO + LRO + 'さくら' + PDF, LRO + 'みどり' + PDF + PDF], 0, [[0, '', 10000]], [])).cfg.members.map(m => m[0]), ['さくら', 'みどり']);
+eq('R1 bidi hash rejected', CS.decodeHash(hashOf([1, '', '', 0, [[RLO + LRO + 'さくら' + PDF, 0], [LRO + 'みどり' + PDF + PDF, 0]], [[0, '', 10000]], []])), null);
+eq('R1 zwsp dup', CS.toConfig(draft(['さくら', 'さくら' + ZWSP], 0, [[0, '', 1]], [])).errors, ['呼び名「さくら」が重なっています。呼び分けてください']);
+eq('R1 width dup', CS.toConfig(draft(['ＡＢ', 'ab'], 0, [[0, '', 1]], [])).errors, ['呼び名「ab」が重なっています。呼び分けてください']);
+eq('R1 dup hash rejected', CS.decodeHash(hashOf([1, '', '', 0, [['AB', 0], ['ab', 0]], [[0, '', 1]], []])), null);
+// 🔴2 日付らしい形だけを外す
+['0276-12-3456', '0276.12.3456', '1234-5-678', '2026-13-45 1234567'].forEach(s => eq('R2 stop ' + s, CS.blockedReason(s), 'number'));
+['2026-10-25の会場代', '2026/1/5 マルシェ', '1999.12.31'].forEach(s => eq('R2 pass ' + s, CS.blockedReason(s), ''));
+// 🟡3 止めすぎを通す
+['振込手数料', '銀行手数料', 'QRコード決済', 'QRコード決済の売上', '郵便局で発送', '支店の会議室', 'チラシ200枚@10円', 'accountant', 'かこうざい', '送金手数料'].forEach(s => eq('R3 pass ' + s, CS.blockedReason(s), ''));
+// 🟡4 すり抜けを止める
+['PayPay ID sakura0123へ送金', 'ことら送金', '払込先 楽天', 'Kyash ID abc', '090・1234・5678', '123、4567', '入金先', '振込手数料と振込先'].forEach(s => eq('R4 stop ' + s, CS.blockedReason(s) !== '', true));
+// 🟢7 端数は割合が0でない最初の人へ
+const r7 = CS.compute(cfgOf(draft([['A', 0], ['B', 50], ['C', 50]], 1, [[0, '', 3]], [])));
+eq('R7 restTo', J([r7.share, r7.restTo]), [[0, 2, 1], 1]);
+// 🟢8 呼び名 toString・__proto__
+eq('R8 toString', CS.toConfig(draft(['toString', 'valueOf'], 0, [[0, '', 1]], [])).errors, []);
+eq('R8 proto hash', J(CS.decodeHash(hashOf([1, '', '', 0, [['__proto__', 0], ['B', 0]], [[0, '', 1]], []])).members), [['__proto__', 0], ['B', 0]]);
 
 // 下書きの読み込み（壊れた保存内容でも落ちない）
 eq('draft null', J(CS.sanitizeDraft(null)), J(CS.emptyDraft()));

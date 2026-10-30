@@ -76,7 +76,7 @@ const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').r
     sales: [{ who: 0, item: '当日の現金', amt: '45000' }], exp: [{ who: 1, item: '会場代', amt: '12000' }, { who: 2, item: '材料費', amt: '2000' }] };
   await b.open(ORIGIN, 1000, 900, 2, false, 'light'); await b.ev(setDraft(card2)); await b.open(ORIGIN, 1000, 900, 2, false, 'light');
   ok('card2 settle', JSON.stringify(await b.ev(settle)) === JSON.stringify(['あおい → ひなた 22,333円', 'あおい → れん 12,333円']), await b.ev(settle));
-  ok('card2 rest note', /余った端数1円は一覧の1人目（あおい）/.test(await b.ev(`document.querySelector('.sticky').innerText`)));
+  ok('card2 rest note', /余った端数は一覧の1人目に寄せます。この明細では1円をあおいに寄せています/.test(await b.ev(`document.querySelector('.sticky').innerText`)));
   await b.ev(click('明細のリンクを作る')); await b.sleep(300);
   m = await b.ev(measure); ok('make 1000 no overflow', m.sw <= 1000 && !m.over.length, m);
   ok('two columns', await b.ev(`getComputedStyle(document.querySelector('.layout')).gridTemplateColumns.split(' ').length===2`));
@@ -93,6 +93,10 @@ const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').r
   m = await b.ev(measure); ok('view 375 no overflow', m.sw <= 375 && !m.over.length, m); ok('view 375 targets', !m.small.length, m.small);
   ok('view message has url', (await b.ev(`document.querySelector('.msgbox').value`)).endsWith(url));
   await b.shot(path.join(OUT, 'view-375-light.png'), { x: 0, y: 0, width: 375, height: await b.ev('document.documentElement.scrollHeight') });
+  // 9b) クエリ付きで開かれても、明細の文のリンクに # 以降が残る
+  await b.open(ORIGIN + '?fbclid=x' + url.replace(/^[^#]*/, ''), 375, 812, 2, true, 'light');
+  ok('query url keeps hash', (await b.ev(`document.querySelector('.msgbox').value`)).endsWith(ORIGIN + url.replace(/^[^#]*/, '')));
+  await b.open(url, 375, 812, 2, true, 'light');
   // 10) コピー（headlessでは clipboard が拒否されることがある。どちらの経路でも利用者に結果が出ること）
   await b.ev(click('明細の文をコピー')); await b.sleep(400);
   const cpm = await b.ev(`document.querySelector('.panel .okmsg').textContent`);
@@ -102,6 +106,11 @@ const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').r
   ok('edit loads make', await b.ev(`location.hash===''&&document.querySelectorAll('.mem').length===2&&document.querySelectorAll('.mem input[type=text]')[0].value==='さくら'`));
   await b.ev(click('明細のリンクを作る')); await b.sleep(300);
   ok('edit roundtrip same url', (await b.ev(`document.querySelector('textarea.urlbox').value`)).replace(/^[^#]*/, '') === url.replace(/^[^#]*/, ''));
+  // 11b) 「自分で売上分けの明細を作る」は下書きを消さない
+  await b.ev(`localStorage.setItem('cohost-split-v1', JSON.stringify({event:'自分の下書き',date:'',mode:0,members:[{name:'X',pct:''},{name:'Y',pct:''}],sales:[{who:0,item:'',amt:'1'}],exp:[]}))`);
+  await b.open(url, 375, 812, 2, true, 'light');
+  await b.ev(click('自分で売上分けの明細を作る')); await b.sleep(300);
+  ok('own make keeps draft', await b.ev(`document.querySelector('input[type=text]').value`) === '自分の下書き');
   // 12) ダーク
   await b.open(url, 375, 812, 2, true, 'dark');
   const dk = await b.ev(`({bg:getComputedStyle(document.body).backgroundColor,settle:getComputedStyle(document.querySelector('.settle')).borderColor,ink:getComputedStyle(document.querySelector('.settle .tr')).color})`);

@@ -84,12 +84,13 @@
   .settle { border: 3px solid var(--accent); border-radius: 10px; background: var(--surface); padding: 12px 14px; margin: 0 0 12px; }
   .settle h3 { font-size: 15px; color: var(--ink3); margin: 0 0 4px; }
   .settle .tr { font-size: 22px; font-weight: 800; line-height: 1.4; margin: 2px 0; overflow-wrap: anywhere; }
-  .settle .tr .amt { white-space: nowrap; }
+  .settle .tr .nw { white-space: nowrap; }
   .settle .none { font-size: 19px; font-weight: 800; margin: 2px 0; }
   .totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; }
   .totals div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; }
   .totals .k { display: block; font-size: 13px; color: var(--ink3); }
   .totals .v { display: block; font-weight: 800; font-size: 16px; overflow-wrap: anywhere; }
+  @media (max-width: 420px) { .totals .v { font-size: 14px; } }
   .deficit { border: 2px solid var(--danger); background: var(--danger-soft); border-radius: 8px; padding: 8px 12px; margin: 0 0 12px; font-weight: 700; }
   .basis { color: var(--ink2); margin: 0 0 10px; overflow-wrap: anywhere; }
   .people { display: grid; gap: 8px; margin: 0 0 12px; }
@@ -134,8 +135,12 @@ var CS = (function () {
   var LIM = { event: 30, name: 10, item: 20, membersMin: 2, membersMax: 4, sales: 8, exp: 10, amount: 9999999 };
   var HASH_MAX = 4000, URL_MAX = 2000;
   var WD = ['日', '月', '火', '水', '木', '金', '土'];
+  // 向きを変える文字・見えない文字（書式文字 Cf）とハングルのフィラーは落とす。残すと、精算の行の向きだけを逆に見せたり、同じ見た目の別名を作れるため
+  var RE_INVISIBLE = new RegExp('[\\p{Cf}' + String.fromCharCode(0x3164, 0x115f, 0x1160, 0xffa0) + ']', 'gu');
 
-  function clean(s) { return String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+  function clean(s) { return String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(RE_INVISIBLE, '').replace(/\s+/g, ' ').trim(); }
+  // 呼び名が重なっていないかを見る形（全角半角・大文字小文字・空白の違いをそろえる）
+  function nameKey(s) { return clean(s).normalize('NFKC').toLowerCase().replace(/\s/g, ''); }
   function cpLen(s) { return Array.from(s).length; }
   function norm(s) {
     return String(s).normalize('NFKC').toLowerCase()
@@ -153,22 +158,25 @@ var CS = (function () {
   // リンク・メールアドレス・電話番号らしい文字を見つける（Day081の規則を流用）。口座番号を想定して、7桁以上の数字の並びも止める
   var TLD = '(?:com|net|org|jp|me|io|co|info|biz|xyz|app|dev|link|page|shop|site|online|tokyo|ly|gl|to|cc|tv|us|uk|ne|or|ac|go|ee|gle|be|gd|ai|fm|in|so|top|cn|ru|kr|tw|hk|ws|gg|sh|im|is|li|la|vip|club|live|work|fun|icu)';
   var RE_DOMAIN = new RegExp('[^\\s.]+\\.' + TLD + '(?![a-z])');
-  var LEAD_WORDS = ['lineid', 'らいんid', 'id検索', '友だち追加', '友達追加', 'ともだち追加', 'qrこど'].map(wordKey);
+  var LEAD_WORDS = ['lineid', 'らいんid', 'id検索', '友だち追加', '友達追加', 'ともだち追加', 'paypayid', 'kyashid'].map(wordKey);
   // 振込先・口座を書かせない（偽の請求のように使わせない）。語の根で持つ
-  var MONEY_WORDS = ['振込', '振り込', 'ふりこみ', 'ふりこ', '口座', 'こうざ', '銀行', 'ぎんこう', '信用金庫', '信金', 'ゆうちょ', '郵便局', '通帳', '暗証', 'カード番号', '支店', '名義', 'bank', 'account'].map(wordKey);
+  var MONEY_WORDS = ['振込', '振り込', 'ふりこみ', '払込', '払い込', '送金', '入金先', '支払先', '支払い先', '口座', '銀行', 'ぎんこう', '信用金庫', '信金', 'ゆうちょ', '通帳', '暗証', 'カード番号', '名義', 'bank'].map(wordKey);
+  // 経費・売上の内容としてふつうに使う言葉は、照合の前に取り除く（振込手数料などを止めないため）
+  var MONEY_OK = ['振込手数料', '振り込み手数料', '振込料', '銀行手数料', '送金手数料'].map(wordKey);
   var KANJI_DIGITS = '〇一二三四五六七八九';
   // 日付（2026-10-25・2026/10/25・2026.10.25）は数字の並びに数えない
-  var RE_DATE = /\d{4}[\-\/.]\d{1,2}[\-\/.]\d{1,2}/g;
+  var RE_DATE = /(?<!\d)(?:19|20)\d{2}[\-\/.](?:0?[1-9]|1[0-2])[\-\/.](?:0?[1-9]|[12]\d|3[01])(?!\d)/g;
   function blockedReason(s) {
     var n = norm(s), compact = n.replace(/\s/g, ''), key = wordKey(s);
     var dotted = compact.replace(/ドット|どっと|\(dot\)|\[dot\]|dot/g, '.');
     if (/https?|:\/\/|www\.|tel:|mailto:/.test(compact) || RE_DOMAIN.test(n) || RE_DOMAIN.test(compact) || RE_DOMAIN.test(dotted)) return 'link';
     if (hasWord(key, LEAD_WORDS)) return 'lead';
-    if (/@/.test(n)) return 'mail';
-    if (hasWord(key, MONEY_WORDS)) return 'money';
+    if (/@(?!\d)/.test(n)) return 'mail'; // 「@10円」のような単価の書き方は通す
+    var mkey = key; MONEY_OK.forEach(function (w) { mkey = mkey.split(w).join('|'); });
+    if (hasWord(mkey, MONEY_WORDS)) return 'money';
     var digits = n.replace(/[〇一二三四五六七八九]/g, function (c) { return String(KANJI_DIGITS.indexOf(c)); }).replace(RE_DATE, ' ');
-    if (/\+\d[\d\s().\/_\-]{6,}/.test(digits)) return 'number';
-    var runs = digits.match(/\d[\d\s().\/_\-]*\d/g) || [];
+    if (/\+\d[\d\s().\/_\-・、]{6,}/.test(digits)) return 'number';
+    var runs = digits.match(/\d[\d\s().\/_\-・、]*\d/g) || [];
     for (var i = 0; i < runs.length; i++) if (runs[i].replace(/\D/g, '').length >= 7) return 'number';
     return '';
   }
@@ -253,12 +261,12 @@ var CS = (function () {
     var date = clean(d.date);
     if (date && !validDate(date)) { errs.push('開催日の形が正しくありません'); date = ''; }
     var mode = d.mode === 1 ? 1 : 0;
-    var n = d.members.length, members = [], seen = {};
+    var n = d.members.length, members = [], seen = Object.create(null);
     if (n < LIM.membersMin || n > LIM.membersMax) errs.push('メンバーは' + LIM.membersMin + '〜' + LIM.membersMax + '人です');
     var pctSum = 0, pctOk = true;
     d.members.forEach(function (m, i) {
       var name = txt(m.name, LIM.name, (i + 1) + '人目の呼び名', true);
-      if (name) { if (seen[name]) errs.push('呼び名「' + name + '」が重なっています。呼び分けてください'); seen[name] = 1; }
+      if (name) { var nk = nameKey(name); if (seen[nk]) errs.push('呼び名「' + name + '」が重なっています。呼び分けてください'); seen[nk] = 1; }
       var pct = 0;
       if (mode === 1) {
         var s = String(m.pct == null ? '' : m.pct).normalize('NFKC').replace(/[%\s]/g, '');
@@ -304,7 +312,10 @@ var CS = (function () {
     var S = recv.reduce(function (a, b) { return a + b; }, 0), E = paid.reduce(function (a, b) { return a + b; }, 0), P = S - E, A = Math.abs(P);
     var share = c.members.map(function (m) { return c.mode === 1 ? Math.floor(A * m[1] / 100) : Math.floor(A / n); });
     var rest = A - share.reduce(function (a, b) { return a + b; }, 0);
-    share[0] += rest; // 1円未満を切り捨てて余った端数は、一覧の1人目に寄せる
+    // 1円未満を切り捨てて余った端数は、一覧の1人目（割合で分けるときは、割合が0でない最初の人）に寄せる
+    var restTo = 0;
+    if (c.mode === 1) for (i = 0; i < n; i++) if (c.members[i][1] > 0) { restTo = i; break; }
+    share[restTo] += rest;
     if (P < 0) share = share.map(function (v) { return -v; });
     var hand = [], diff = [];
     for (i = 0; i < n; i++) { hand.push(recv[i] - paid[i]); diff.push(share[i] - hand[i]); }
@@ -321,7 +332,7 @@ var CS = (function () {
       if (!givers[g].v) g++;
       if (!takers[t].v) t++;
     }
-    return { S: S, E: E, P: P, recv: recv, paid: paid, share: share, hand: hand, diff: diff, rest: rest, transfers: transfers };
+    return { S: S, E: E, P: P, recv: recv, paid: paid, share: share, hand: hand, diff: diff, rest: rest, restTo: restTo, transfers: transfers };
   }
   function transferText(c, tr) { return c.members[tr[0]][0] + ' → ' + c.members[tr[1]][0] + ' ' + yen(tr[2]); }
   function basisText(c, r) {
@@ -376,11 +387,11 @@ var CS = (function () {
     if (!Array.isArray(ms) || ms.length < LIM.membersMin || ms.length > LIM.membersMax) return null;
     if (!Array.isArray(ss) || ss.length < 1 || ss.length > LIM.sales) return null;
     if (!Array.isArray(es) || es.length > LIM.exp) return null;
-    var seen = {}, sum = 0, i;
+    var seen = Object.create(null), sum = 0, i;
     for (i = 0; i < ms.length; i++) {
       var m = ms[i];
-      if (!Array.isArray(m) || m.length !== 2 || !isStr(m[0], LIM.name, true) || seen[m[0]]) return null;
-      seen[m[0]] = 1;
+      if (!Array.isArray(m) || m.length !== 2 || !isStr(m[0], LIM.name, true) || seen[nameKey(m[0])]) return null;
+      seen[nameKey(m[0])] = 1;
       if (!Number.isInteger(m[1]) || m[1] < 0 || m[1] > 100 || (a[3] === 0 && m[1] !== 0)) return null;
       sum += m[1];
     }
@@ -462,7 +473,8 @@ if (typeof module !== 'undefined') module.exports = CS;
     var r = CS.compute(cfg);
     var settle = h('section', { class: 'settle', 'aria-label': '精算' }, [h('h3', { text: '精算（誰が誰に渡すか）' })]);
     if (r.transfers.length) r.transfers.forEach(function (tr) {
-      settle.appendChild(h('p', { class: 'tr' }, [cfg.members[tr[0]][0] + ' → ' + cfg.members[tr[1]][0] + ' ', h('span', { class: 'amt', text: CS.yen(tr[2]) })]));
+      // 呼び名と金額をそれぞれ1かたまりにして、名前の途中で折れないようにする
+      settle.appendChild(h('p', { class: 'tr' }, [h('span', { class: 'nw', text: cfg.members[tr[0]][0] + ' →' }), ' ', h('span', { class: 'nw', text: cfg.members[tr[1]][0] }), ' ', h('span', { class: 'nw', text: CS.yen(tr[2]) })]));
     });
     else settle.appendChild(h('p', { class: 'none', text: '精算はありません' }));
     root.appendChild(settle);
@@ -486,7 +498,8 @@ if (typeof module !== 'undefined') module.exports = CS;
       ]));
     });
     root.appendChild(people);
-    if (r.rest) root.appendChild(h('p', { class: 'small', text: '1円未満は切り捨て、余った端数' + CS.yen(r.rest) + 'は一覧の1人目（' + cfg.members[0][0] + '）に寄せています。' }));
+    root.appendChild(h('p', { class: 'small', text: '1円未満は切り捨て、余った端数は一覧の1人目' + (cfg.mode === 1 ? '（割合が0%の人は飛ばします）' : '') + 'に寄せます。' +
+      (r.rest ? 'この明細では' + CS.yen(r.rest) + 'を' + cfg.members[r.restTo][0] + 'に寄せています。' : '') }));
     return r;
   }
   function renderLists(root, cfg) {
@@ -620,7 +633,7 @@ if (typeof module !== 'undefined') module.exports = CS;
     }
     function pctSumText() {
       var s = 0, ok = true;
-      draft.members.forEach(function (m) { var v = String(m.pct).normalize('NFKC').trim(); if (/^\d{1,3}$/.test(v)) s += +v; else ok = false; });
+      draft.members.forEach(function (m) { var v = String(m.pct).normalize('NFKC').replace(/[%\s]/g, ''); if (/^\d{1,3}$/.test(v)) s += +v; else ok = false; });
       return '合計 ' + s + '%' + (ok && s === 100 ? '（OK）' : '（100%にしてください）');
     }
     function buildMembers() {
@@ -684,7 +697,7 @@ if (typeof module !== 'undefined') module.exports = CS;
         amt.value = r.amt; amt.addEventListener('input', function () { r.amt = amt.value; changed(); });
         box.appendChild(h('div', { class: 'row' }, [
           h('div', { class: 'row-grid' }, [
-            h('div', null, [h('label', { class: 'f', for: sid, text: whoLabel }), sel]),
+            h('div', { class: 'wide' }, [h('label', { class: 'f', for: sid, text: whoLabel }), sel]),
             h('div', { class: 'wide' }, [h('label', { class: 'f', for: iid }, ['内容', h('span', { class: 'hint', text: ' （任意）' })]), item]),
             h('div', null, [h('label', { class: 'f', for: aid, text: '金額（円）' }), amt])
           ]),
@@ -726,6 +739,7 @@ if (typeof module !== 'undefined') module.exports = CS;
 
     var make = h('button', { type: 'button', class: 'primary', text: '明細のリンクを作る' });
     make.addEventListener('click', function () {
+      clearTimeout(timer); renderRes(); // 待たせていた更新が、あとから明細の文を上書きしないように
       showErrors = true;
       var r = refreshErrors();
       if (!r.cfg) { linkBox.hidden = true; if (errBox.scrollIntoView) errBox.scrollIntoView({ block: 'nearest' }); return; }
@@ -762,7 +776,7 @@ if (typeof module !== 'undefined') module.exports = CS;
     renderResult(page, cfg);
     renderLists(page, cfg);
     page.appendChild(h('p', { class: 'tax', text: TAX_NOTE }));
-    var url = location.href.split('?')[0];
+    var url = baseUrl() + location.hash; // `#` の前にクエリが付いて開かれても、明細のリンクを保つ
     var ta = h('textarea', { readonly: true, class: 'msgbox', rows: 9, 'aria-label': '明細の文' });
     ta.value = CS.message(cfg, url);
     var msg = h('p', { class: 'okmsg', role: 'status' });
@@ -780,9 +794,7 @@ if (typeof module !== 'undefined') module.exports = CS;
     } });
     page.appendChild(h('div', { class: 'panel' }, [h('h3', { text: '明細の文' }), ta, h('div', { class: 'stack' }, [cp, edit]), msg]));
     fitHeight(ta);
-    page.appendChild(h('button', { type: 'button', class: 'linklike', text: '自分で売上分けの明細を作る', onclick: function () {
-      saveDraft(CS.emptyDraft()); goMake();
-    } }));
+    page.appendChild(h('button', { type: 'button', class: 'linklike', text: '自分で売上分けの明細を作る', onclick: goMake }));
   }
   function renderBroken() {
     document.title = '共催イベントの売上分け';
